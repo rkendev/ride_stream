@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "RideStream v2 — Step Functions state machine for pipeline orchestration"
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  StepFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "ridestream-stepfn-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StepFunctionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - emr-serverless:StartJobRun
+                  - emr-serverless:GetJobRun
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: !ImportValue
+                  Fn::Sub: "RideStream-EMRJobRole-${Environment}"
+              # Required for .sync invocations of EMR Serverless / Glue / Lambda
+              # (Step Functions creates managed CloudWatch rules to track completion).
+              - Effect: Allow
+                Action:
+                  - events:PutTargets
+                  - events:PutRule
+                  - events:DescribeRule
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - glue:StartJobRun
+                  - glue:GetJobRun
+                Resource: "*"
+
+  # ASL definition is in step_functions.asl.json (uploaded to S3 during deploy)
+  PipelineStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub "ridestream-pipeline-${Environment}"
+      RoleArn: !GetAtt StepFunctionRole.Arn
+      DefinitionS3Location:
+        Bucket: !Sub "ridestream-artifacts-${Environment}"
+        Key: "cloudformation/step_functions.asl.json"
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  StateMachineArn:
+    Value: !Ref PipelineStateMachine
+    Export:
+      Name: !Sub "RideStream-StateMachine-${Environment}"

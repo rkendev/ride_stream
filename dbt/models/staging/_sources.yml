@@ -1,0 +1,47 @@
+version: 2
+
+sources:
+  - name: bronze
+    schema: default
+    tables:
+      - name: ride_events
+        description: "Raw ride events from Kafka via Firehose/MinIO (Parquet)"
+        columns:
+          - name: event_id
+            description: "Unique event identifier (UUID)"
+            tests:
+              - unique
+              - not_null
+          - name: ride_id
+            description: "Ride identifier (UUID)"
+            tests:
+              - not_null
+          - name: event_type
+            description: "Event type (ride_requested, ride_accepted, etc.)"
+            tests:
+              - not_null
+          - name: timestamp
+            description: "Event timestamp (ISO-8601)"
+          - name: rider_id
+            description: "Rider identifier"
+          - name: driver_id
+            description: "Driver identifier (nullable for requests)"
+          - name: latitude
+            description: "Event latitude"
+          - name: longitude
+            description: "Event longitude"
+          - name: fare_cents
+            description: "Fare in cents"
+          - name: distance_meters
+            description: "Distance in meters"
+
+      - name: driver_events
+        description: "Driver status events (online, offline, location updates)"
+        columns:
+          - name: event_id
+            tests:
+              - unique
+              - not_null
+          - name: driver_id
+            tests:
+              - not_null

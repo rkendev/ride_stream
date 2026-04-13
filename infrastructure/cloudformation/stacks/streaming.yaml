@@ -1,0 +1,83 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "RideStream v2 — MSK cluster + Kinesis Firehose delivery stream"
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  # §10.12: MSK provisioning takes 15-20 minutes
+  MSKCluster:
+    Type: AWS::MSK::Cluster
+    Properties:
+      ClusterName: !Sub "ridestream-msk-${Environment}"
+      KafkaVersion: "3.6.0"
+      # Must be a multiple of the number of Client Subnet AZs (2 subnets = multiple of 2).
+      NumberOfBrokerNodes: 2
+      BrokerNodeGroupInfo:
+        InstanceType: kafka.t3.small
+        ClientSubnets:
+          - !ImportValue
+            Fn::Sub: "RideStream-PrivateSubnetA-${Environment}"
+          - !ImportValue
+            Fn::Sub: "RideStream-PrivateSubnetB-${Environment}"
+        SecurityGroups:
+          - !ImportValue
+            Fn::Sub: "RideStream-MSKSecurityGroup-${Environment}"
+        StorageInfo:
+          EBSStorageInfo:
+            VolumeSize: 100
+      ConfigurationInfo:
+        Arn: !Ref MSKConfiguration
+        Revision: 1
+      EncryptionInfo:
+        EncryptionInTransit:
+          ClientBroker: TLS_PLAINTEXT
+      Tags:
+        Environment: !Ref Environment
+
+  MSKConfiguration:
+    Type: AWS::MSK::Configuration
+    Properties:
+      Name: !Sub "ridestream-config-${Environment}"
+      KafkaVersionsList:
+        - "3.6.0"
+      ServerProperties: |
+        auto.create.topics.enable=false
+        log.retention.hours=168
+        num.partitions=3
+        default.replication.factor=2
+
+  # Firehose: Kafka -> Parquet -> S3 (Bronze)
+  # §10.13: 5-minute minimum buffer latency
+  FirehoseStream:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName: !Sub "ridestream-firehose-${Environment}"
+      DeliveryStreamType: DirectPut
+      ExtendedS3DestinationConfiguration:
+        BucketARN: !ImportValue
+          Fn::Sub: "RideStream-BronzeBucket-${Environment}"
+        RoleARN: !ImportValue
+          Fn::Sub: "RideStream-FirehoseRole-${Environment}"
+        Prefix: "ride-events/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/"
+        ErrorOutputPrefix: "errors/"
+        BufferingHints:
+          SizeInMBs: 64
+          IntervalInSeconds: 300
+        CompressionFormat: GZIP
+        # Note: Parquet conversion via DataFormatConversionConfiguration
+        # requires a SchemaConfiguration pointing to a Glue table.
+        # Disabled for now — dbt reads JSON and re-materializes as Parquet.
+
+Outputs:
+  MSKClusterArn:
+    Value: !Ref MSKCluster
+    Export:
+      Name: !Sub "RideStream-MSKCluster-${Environment}"
+  FirehoseStreamArn:
+    Value: !GetAtt FirehoseStream.Arn
+    Export:
+      Name: !Sub "RideStream-Firehose-${Environment}"

@@ -1,0 +1,45 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - pydantic>=2.0
+          - types-python-dateutil
+        args: [--ignore-missing-imports]
+        pass_filenames: false
+        entry: mypy src/ridestream/
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.0
+    hooks:
+      - id: bandit
+        args: [-r, src/, -ll, -q]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key
+      - id: check-merge-conflict
+
+  - repo: local
+    hooks:
+      - id: dbt-no-duplicate-models
+        name: Check for duplicate dbt model names
+        entry: bash -c 'dupes=$(find dbt/models -name "*.sql" -exec basename {} \; 2>/dev/null | sort | uniq -d); [ -z "$dupes" ] || (echo "Duplicate dbt models: $dupes"; exit 1)'
+        language: system
+        files: ^dbt/models
+        pass_filenames: false

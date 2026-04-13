@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash:make",
+      "Bash:make *",
+      "Bash:uv *",
+      "Bash:docker *",
+      "Bash:aws *",
+      "Bash:git *",
+      "Bash:dbt *",
+      "Bash:python *",
+      "Bash:pytest *",
+      "Bash:ruff *",
+      "Bash:mypy *",
+      "Bash:bandit *"
+    ],
+    "deny": [
+      "Bash:rm -rf /",
+      "Bash:sudo *",
+      "Bash:rm -rf .*",
+      "Bash:git push --force",
+      "Bash:export AWS_ACCESS_KEY_ID",
+      "Bash:export AWS_SECRET_ACCESS_KEY",
+      "Bash:aws configure"
+    ]
+  }
+}

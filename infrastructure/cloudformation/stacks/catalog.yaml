@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "RideStream v2 — Glue Data Catalog + Athena workgroup"
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Sub "ridestream_${Environment}"
+        Description: "RideStream data catalog"
+
+  AthenaWorkgroup:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: !Sub "ridestream-${Environment}"
+      Description: "RideStream Athena workgroup"
+      State: ENABLED
+      WorkGroupConfiguration:
+        ResultConfiguration:
+          OutputLocation: !Sub "s3://ridestream-athena-results-${Environment}/output/"
+        EnforceWorkGroupConfiguration: true
+        PublishCloudWatchMetricsEnabled: true
+        BytesScannedCutoffPerQuery: 10737418240
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  GlueDatabaseName:
+    Value: !Ref GlueDatabase
+    Export:
+      Name: !Sub "RideStream-GlueDB-${Environment}"
+  AthenaWorkgroupName:
+    Value: !Ref AthenaWorkgroup
+    Export:
+      Name: !Sub "RideStream-AthenaWG-${Environment}"

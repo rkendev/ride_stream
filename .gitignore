@@ -1,0 +1,84 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Linting / Type checking
+.ruff_cache/
+.mypy_cache/
+dmypy.json
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/dbt_modules/
+
+# Docker volumes (data)
+volumes/minio/
+volumes/hive-warehouse/
+
+# Environment files (secrets)
+.env
+.env.local
+.env.production
+.env.staging
+secrets/
+private/
+
+# AWS
+.aws/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+.logs/
+
+# Artifacts
+artifacts/
+
+# Dev workflow prompts (not source code)
+*_PROMPT.md
+RESUME_PROMPT.md
+
+# Working files
+project_description.png
+project_description.txt
+images/
+
+# Secrets baseline
+.secrets.baseline
+
+# Full volumes directory
+volumes/
+
+# Lock file (optional for portfolio)
+uv.lock

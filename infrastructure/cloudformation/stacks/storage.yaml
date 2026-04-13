@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "RideStream v2 — S3 buckets (medallion layers + Athena results)"
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  BronzeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "ridestream-bronze-${Environment}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToIA
+            Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 30
+          - Id: ExpireOldData
+            Status: Enabled
+            ExpirationInDays: 365
+      Tags:
+        - Key: Layer
+          Value: bronze
+
+  SilverBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "ridestream-silver-${Environment}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      Tags:
+        - Key: Layer
+          Value: silver
+
+  GoldBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "ridestream-gold-${Environment}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      Tags:
+        - Key: Layer
+          Value: gold
+
+  AthenaResultsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "ridestream-athena-results-${Environment}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: CleanupResults
+            Status: Enabled
+            ExpirationInDays: 7
+      Tags:
+        - Key: Layer
+          Value: athena-results
+
+Outputs:
+  BronzeBucketArn:
+    Value: !GetAtt BronzeBucket.Arn
+    Export:
+      Name: !Sub "RideStream-BronzeBucket-${Environment}"
+  SilverBucketArn:
+    Value: !GetAtt SilverBucket.Arn
+    Export:
+      Name: !Sub "RideStream-SilverBucket-${Environment}"
+  GoldBucketArn:
+    Value: !GetAtt GoldBucket.Arn
+    Export:
+      Name: !Sub "RideStream-GoldBucket-${Environment}"
+  AthenaResultsBucketArn:
+    Value: !GetAtt AthenaResultsBucket.Arn
+    Export:
+      Name: !Sub "RideStream-AthenaResults-${Environment}"

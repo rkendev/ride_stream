@@ -1,0 +1,11 @@
+[
+  {
+    "total_rides": 10,
+    "total_revenue_cents": 17250,
+    "total_revenue_dollars": 172.5,
+    "total_distance_meters": 29500,
+    "total_distance_km": 29.5,
+    "avg_surge": 1.45,
+    "unique_drivers": 10
+  }
+]

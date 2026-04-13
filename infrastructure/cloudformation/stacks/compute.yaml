@@ -1,0 +1,34 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "RideStream v2 — EMR Serverless application for Spark jobs"
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  # §10.14: EMR cold start 30-60 seconds
+  EMRApplication:
+    Type: AWS::EMRServerless::Application
+    Properties:
+      Name: !Sub "ridestream-spark-${Environment}"
+      ReleaseLabel: emr-7.0.0
+      Type: Spark
+      AutoStartConfiguration:
+        Enabled: true
+      AutoStopConfiguration:
+        Enabled: true
+        IdleTimeoutMinutes: 15
+      MaximumCapacity:
+        Cpu: 8 vCPU
+        Memory: 32 GB
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  EMRApplicationId:
+    Value: !Ref EMRApplication
+    Export:
+      Name: !Sub "RideStream-EMRApp-${Environment}"

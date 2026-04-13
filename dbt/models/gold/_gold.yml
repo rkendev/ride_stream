@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: rides_summary
+    description: "Daily ride summary aggregated by date, driver, and passenger"
+    columns:
+      - name: ride_date
+        description: "Date of rides"
+        tests:
+          - not_null
+      - name: driver_id
+        description: "Driver identifier"
+      - name: passenger_id
+        description: "Passenger identifier"
+      - name: rides_completed
+        description: "Number of completed rides"
+        tests:
+          - not_null
+      - name: avg_fare_cents
+        description: "Average fare in cents"
+      - name: total_distance_km
+        description: "Total distance driven in km"
+
+  - name: driver_metrics
+    description: "Driver KPIs: rides completed, earnings, distance"
+    columns:
+      - name: driver_id
+        description: "Driver identifier"
+        tests:
+          - unique
+          - not_null
+      - name: rides_completed
+        description: "Total rides completed by driver"
+        tests:
+          - not_null
+      - name: total_earnings_usd
+        description: "Total earnings in USD"
+      - name: avg_fare_usd
+        description: "Average fare per ride in USD"
+
+  - name: passenger_metrics
+    description: "Passenger KPIs: rides taken, spending, repeat rate"
+    columns:
+      - name: passenger_id
+        description: "Passenger identifier"
+        tests:
+          - unique
+          - not_null
+      - name: rides_taken
+        description: "Total rides taken"
+        tests:
+          - not_null
+      - name: total_spent_usd
+        description: "Total amount spent in USD"
+      - name: is_repeat_rider
+        description: "Whether the passenger has taken more than one ride"

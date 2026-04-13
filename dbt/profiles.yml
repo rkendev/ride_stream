@@ -1,0 +1,21 @@
+ridestream:
+  target: dev
+  outputs:
+    dev:
+      type: trino
+      method: none
+      host: localhost
+      port: 8888
+      user: trino
+      database: hive
+      schema: ridestream_dev
+      threads: 4
+    prod:
+      type: athena
+      s3_staging_dir: "s3://ridestream-athena-results/"
+      s3_data_naming: schema_table
+      database: ridestream_db
+      schema: ridestream_prod
+      region_name: us-east-1
+      threads: 4
+      poll_interval: 5

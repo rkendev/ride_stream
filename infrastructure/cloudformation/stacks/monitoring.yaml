@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "RideStream v2 — CloudWatch dashboards, alarms, SNS notifications"
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+  AlertEmail:
+    Type: String
+    Default: alerts@ridestream.dev
+
+Resources:
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "ridestream-alerts-${Environment}"
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  PipelineFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "ridestream-pipeline-failure-${Environment}"
+      AlarmDescription: "Alert when Step Functions pipeline fails"
+      Namespace: AWS/States
+      MetricName: ExecutionsFailed
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !ImportValue
+            Fn::Sub: "RideStream-StateMachine-${Environment}"
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlertTopic
+
+  Dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub "ridestream-${Environment}"
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0, "y": 0, "width": 12, "height": 6,
+              "properties": {
+                "title": "Pipeline Executions",
+                "metrics": [
+                  ["AWS/States", "ExecutionsSucceeded", "StateMachineArn", "${AWS::StackName}"],
+                  ["AWS/States", "ExecutionsFailed", "StateMachineArn", "${AWS::StackName}"]
+                ],
+                "period": 3600,
+                "stat": "Sum",
+                "region": "${AWS::Region}"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 0, "width": 12, "height": 6,
+              "properties": {
+                "title": "S3 Bronze Bucket Size",
+                "metrics": [
+                  ["AWS/S3", "BucketSizeBytes", "BucketName", "ridestream-bronze-${Environment}", "StorageType", "StandardStorage"]
+                ],
+                "period": 86400,
+                "stat": "Average",
+                "region": "${AWS::Region}"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  AlertTopicArn:
+    Value: !Ref AlertTopic
+    Export:
+      Name: !Sub "RideStream-AlertTopic-${Environment}"

@@ -1,0 +1,19 @@
+name: ridestream
+version: "2.0.0"
+config-version: 2
+profile: ridestream
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+
+vars:
+  env: "{{ env_var('ENVIRONMENT', 'local') }}"
+
+require-dbt-version: [">=1.7.0", "<2.0.0"]
+
+clean-targets:
+  - target
+  - dbt_packages
+  - logs

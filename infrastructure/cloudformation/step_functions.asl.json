@@ -1,0 +1,168 @@
+{
+  "Comment": "RideStream v2 daily pipeline — orchestrates simulation, Spark metrics, and dbt transforms",
+  "StartAt": "SimulateRides",
+  "States": {
+    "SimulateRides": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "ridestream-simulator",
+        "Payload": {
+          "num_rides": 1000
+        }
+      },
+      "TimeoutSeconds": 300,
+      "ResultPath": "$.simulate_result",
+      "Next": "ComputeMetrics",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "ComputeMetrics": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::emr-serverless:startJobRun.sync",
+      "Parameters": {
+        "ApplicationId.$": "$.emr_app_id",
+        "ExecutionRoleArn.$": "$.emr_role_arn",
+        "JobDriver": {
+          "SparkSubmit": {
+            "EntryPoint": "s3://ridestream-artifacts/jobs/metrics_job.py",
+            "SparkSubmitParameters": "--conf spark.executor.memory=2g --conf spark.executor.cores=2"
+          }
+        }
+      },
+      "TimeoutSeconds": 600,
+      "ResultPath": "$.metrics_result",
+      "Next": "RunDbtTransforms",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "RunDbtTransforms": {
+      "Type": "Parallel",
+      "Comment": "Run silver models in parallel where possible, then gold sequentially",
+      "Branches": [
+        {
+          "StartAt": "DbtSilverRides",
+          "States": {
+            "DbtSilverRides": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::glue:startJobRun.sync",
+              "Parameters": {
+                "JobName": "ridestream-dbt-runner",
+                "Arguments": {
+                  "--dbt_command": "run",
+                  "--dbt_select": "stg_rides",
+                  "--dbt_target": "prod"
+                }
+              },
+              "TimeoutSeconds": 300,
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "DbtSilverMetrics",
+          "States": {
+            "DbtSilverMetrics": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::glue:startJobRun.sync",
+              "Parameters": {
+                "JobName": "ridestream-dbt-runner",
+                "Arguments": {
+                  "--dbt_command": "run",
+                  "--dbt_select": "stg_metrics",
+                  "--dbt_target": "prod"
+                }
+              },
+              "TimeoutSeconds": 300,
+              "End": true
+            }
+          }
+        }
+      ],
+      "ResultPath": "$.silver_result",
+      "Next": "DbtGold",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "DbtGold": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "ridestream-dbt-runner",
+        "Arguments": {
+          "--dbt_command": "run",
+          "--dbt_select": "gold",
+          "--dbt_target": "prod"
+        }
+      },
+      "TimeoutSeconds": 300,
+      "ResultPath": "$.gold_result",
+      "Next": "DbtTest",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "DbtTest": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "ridestream-dbt-runner",
+        "Arguments": {
+          "--dbt_command": "test",
+          "--dbt_target": "prod"
+        }
+      },
+      "TimeoutSeconds": 300,
+      "ResultPath": "$.test_result",
+      "Next": "PipelineSuccess",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "PipelineSuccess": {
+      "Type": "Succeed",
+      "Comment": "All pipeline stages completed successfully"
+    },
+    "NotifyFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn.$": "$.sns_topic_arn",
+        "Subject": "RideStream Pipeline Failure",
+        "Message.$": "States.Format('Pipeline failed at stage. Error: {}', $.error)"
+      },
+      "End": true
+    }
+  }
+}

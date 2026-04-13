@@ -1,0 +1,82 @@
+[
+  {
+    "rider_id": "rider-010",
+    "total_rides": 1,
+    "total_distance_meters": 3400,
+    "total_fare_cents": 1950,
+    "avg_surge_multiplier": 1.9,
+    "metric_date": "2026-04-13"
+  },
+  {
+    "rider_id": "rider-009",
+    "total_rides": 1,
+    "total_distance_meters": 3300,
+    "total_fare_cents": 1900,
+    "avg_surge_multiplier": 1.8,
+    "metric_date": "2026-04-13"
+  },
+  {
+    "rider_id": "rider-008",
+    "total_rides": 1,
+    "total_distance_meters": 3200,
+    "total_fare_cents": 1850,
+    "avg_surge_multiplier": 1.7,
+    "metric_date": "2026-04-13"
+  },
+  {
+    "rider_id": "rider-007",
+    "total_rides": 1,
+    "total_distance_meters": 3100,
+    "total_fare_cents": 1800,
+    "avg_surge_multiplier": 1.6,
+    "metric_date": "2026-04-13"
+  },
+  {
+    "rider_id": "rider-006",
+    "total_rides": 1,
+    "total_distance_meters": 3000,
+    "total_fare_cents": 1750,
+    "avg_surge_multiplier": 1.5,
+    "metric_date": "2026-04-13"
+  },
+  {
+    "rider_id": "rider-005",
+    "total_rides": 1,
+    "total_distance_meters": 2900,
+    "total_fare_cents": 1700,
+    "avg_surge_multiplier": 1.4,
+    "metric_date": "2026-04-13"
+  },
+  {
+    "rider_id": "rider-004",
+    "total_rides": 1,
+    "total_distance_meters": 2800,
+    "total_fare_cents": 1650,
+    "avg_surge_multiplier": 1.3,
+    "metric_date": "2026-04-13"
+  },
+  {
+    "rider_id": "rider-003",
+    "total_rides": 1,
+    "total_distance_meters": 2700,
+    "total_fare_cents": 1600,
+    "avg_surge_multiplier": 1.2,
+    "metric_date": "2026-04-13"
+  },
+  {
+    "rider_id": "rider-002",
+    "total_rides": 1,
+    "total_distance_meters": 2600,
+    "total_fare_cents": 1550,
+    "avg_surge_multiplier": 1.1,
+    "metric_date": "2026-04-13"
+  },
+  {
+    "rider_id": "rider-001",
+    "total_rides": 1,
+    "total_distance_meters": 2500,
+    "total_fare_cents": 1500,
+    "avg_surge_multiplier": 1.0,
+    "metric_date": "2026-04-13"
+  }
+]

@@ -1,0 +1,64 @@
+{
+  "project": "RideStream v2",
+  "pipeline_run": "2026-04-13T12:41:00Z",
+  "environment": "dev",
+  "region": "us-east-1",
+  "methodology": "Spec-Driven Development (SDD)",
+  "architecture": {
+    "pattern": "Hexagonal (Ports & Adapters)",
+    "data": "Medallion (Bronze -> Silver -> Gold)",
+    "infra": "CloudFormation (10 stacks)",
+    "cicd": "CodePipeline + CodeBuild"
+  },
+  "local_stack": {
+    "services": [
+      "Kafka",
+      "MinIO",
+      "Hive Metastore",
+      "Trino",
+      "Spark",
+      "Airflow"
+    ],
+    "tests": {
+      "unit": 302,
+      "integration": 18,
+      "total": 320
+    }
+  },
+  "aws_stack": {
+    "services": [
+      "MSK",
+      "S3",
+      "Glue",
+      "Athena",
+      "EMR Serverless",
+      "Step Functions",
+      "CloudWatch"
+    ],
+    "stacks_deployed": 8,
+    "tests": {
+      "unit": 43,
+      "e2e": 5,
+      "total": 48
+    },
+    "deploy_time_minutes": 52,
+    "pipeline_time_minutes": 7
+  },
+  "layers": {
+    "bronze": {
+      "format": "NDJSON",
+      "storage": "S3",
+      "catalog": "Glue"
+    },
+    "silver": {
+      "format": "Parquet",
+      "storage": "S3",
+      "transform": "Athena CTAS"
+    },
+    "gold": {
+      "format": "Parquet",
+      "storage": "S3",
+      "queries": "Athena"
+    }
+  }
+}

@@ -1,0 +1,55 @@
+version: 2
+
+models:
+  - name: stg_rides
+    description: "Cleaned and deduplicated ride events from bronze layer"
+    columns:
+      - name: event_id
+        description: "Unique event identifier"
+        tests:
+          - unique
+          - not_null
+      - name: ride_id
+        description: "Ride identifier"
+        tests:
+          - not_null
+      - name: event_type
+        description: "Event type (ride_requested, ride_accepted, ride_started, ride_completed)"
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - ride_requested
+                - ride_accepted
+                - ride_started
+                - ride_completed
+                - ride_cancelled
+                - gps_update
+      - name: event_timestamp
+        description: "When the event occurred"
+        tests:
+          - not_null
+      - name: latitude
+        description: "Event latitude"
+      - name: longitude
+        description: "Event longitude"
+      - name: fare_cents
+        description: "Fare in cents (for completed rides)"
+      - name: distance_km
+        description: "Distance in kilometers (derived from meters)"
+
+  - name: stg_metrics
+    description: "Hourly aggregated ride metrics derived from completed rides"
+    columns:
+      - name: metric_hour
+        description: "Hour bucket for metrics"
+        tests:
+          - not_null
+      - name: rides_completed_count
+        description: "Number of completed rides in this window"
+        tests:
+          - not_null
+      - name: avg_fare_cents
+        description: "Average fare in cents"
+      - name: avg_distance_km
+        description: "Average distance in km"

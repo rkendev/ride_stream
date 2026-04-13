@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "RideStream v2 — Root stack (orchestrates nested stacks)"
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+  TemplatesBucket:
+    Type: String
+    Description: "S3 bucket containing nested stack templates"
+  AlertEmail:
+    Type: String
+    Default: alerts@ridestream.dev
+
+Resources:
+  NetworkingStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://${TemplatesBucket}.s3.amazonaws.com/stacks/networking.yaml"
+      Parameters:
+        Environment: !Ref Environment
+
+  IAMStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://${TemplatesBucket}.s3.amazonaws.com/stacks/iam.yaml"
+      Parameters:
+        Environment: !Ref Environment
+
+  StorageStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://${TemplatesBucket}.s3.amazonaws.com/stacks/storage.yaml"
+      Parameters:
+        Environment: !Ref Environment
+
+  StreamingStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - NetworkingStack
+      - IAMStack
+      - StorageStack
+    Properties:
+      TemplateURL: !Sub "https://${TemplatesBucket}.s3.amazonaws.com/stacks/streaming.yaml"
+      Parameters:
+        Environment: !Ref Environment
+
+  ComputeStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - IAMStack
+    Properties:
+      TemplateURL: !Sub "https://${TemplatesBucket}.s3.amazonaws.com/stacks/compute.yaml"
+      Parameters:
+        Environment: !Ref Environment
+
+  CatalogStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - StorageStack
+    Properties:
+      TemplateURL: !Sub "https://${TemplatesBucket}.s3.amazonaws.com/stacks/catalog.yaml"
+      Parameters:
+        Environment: !Ref Environment
+
+  OrchestrationStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - ComputeStack
+      - IAMStack
+    Properties:
+      TemplateURL: !Sub "https://${TemplatesBucket}.s3.amazonaws.com/stacks/orchestration.yaml"
+      Parameters:
+        Environment: !Ref Environment
+
+  MonitoringStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - OrchestrationStack
+    Properties:
+      TemplateURL: !Sub "https://${TemplatesBucket}.s3.amazonaws.com/stacks/monitoring.yaml"
+      Parameters:
+        Environment: !Ref Environment
+        AlertEmail: !Ref AlertEmail
+
+  CICDStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - IAMStack
+    Properties:
+      TemplateURL: !Sub "https://${TemplatesBucket}.s3.amazonaws.com/stacks/codepipeline.yaml"
+      Parameters:
+        Environment: !Ref Environment
+
+Outputs:
+  VpcId:
+    Value: !GetAtt NetworkingStack.Outputs.VpcId
+  MSKClusterArn:
+    Value: !GetAtt StreamingStack.Outputs.MSKClusterArn
+  DashboardName:
+    Value: !Sub "ridestream-${Environment}"

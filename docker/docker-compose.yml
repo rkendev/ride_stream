@@ -1,0 +1,307 @@
+# RideStream v2 — Local Docker Stack
+# Image tags adapted from spec; verified against local registry.
+# See TECHNICAL_PLAN.md §1.2 for architecture diagram
+#
+# Port mapping (host:container):
+#   Kafka:       9092:9092 (client), 29092:29092 (internal)
+#   MinIO:       9000:9000 (API), 9001:9001 (console)
+#   Hive:        9083:9083 (Thrift)
+#   Spark:       7077:7077 (master), 8090:8080 (master UI), 8091:8081 (worker UI)
+#   Trino:       8888:8080 (HTTP)
+#   Airflow:     8085:8080 (webserver, offset to avoid conflicts)
+#   Airflow DB:  5433:5432 (postgres)
+
+services:
+
+  # ── Zookeeper ─────────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: rs2-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_4LW_COMMANDS_WHITELIST: "ruok,srvr,stat"
+    healthcheck:
+      test: ["CMD-SHELL", "echo srvr | nc localhost 2181 | grep Zookeeper"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ── Kafka ─────────────────────────────────────────────────
+  # §10.1: auto.create.topics.enable=false — topics created by kafka-init
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: rs2-kafka
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+  # ── Kafka Init (creates topics, runs once, exits) ─────────
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: rs2-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "/scripts/create-topics.sh"]
+    volumes:
+      - ../volumes/kafka-topics/create-topics.sh:/scripts/create-topics.sh:ro
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # ── MinIO (S3-compatible storage) ─────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: rs2-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - rs2-minio-data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ── MinIO Init (creates buckets, runs once, exits) ────────
+  minio-init:
+    image: minio/mc:latest
+    container_name: rs2-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mc alias set minio http://minio:9000 minioadmin minioadmin
+        mc mb minio/bronze --ignore-existing
+        mc mb minio/silver --ignore-existing
+        mc mb minio/gold --ignore-existing
+        mc mb minio/athena-results --ignore-existing
+        echo "Buckets created:"
+        mc ls minio/
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # ── Hive Metastore (custom Dockerfile — ADR-012) ──────────
+  # §10.3: apache/hive:4.0.0 + hadoop-aws JARs for S3A
+  hive-metastore:
+    build:
+      context: ./hive
+      dockerfile: Dockerfile
+    container_name: rs2-hive-metastore
+    ports:
+      - "9083:9083"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      SERVICE_NAME: metastore
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9083'"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+  # ── Trino Coordinator ─────────────────────────────────────
+  # §10.4: Requires catalogs/hive.properties volume mount
+  trino:
+    image: trinodb/trino:430
+    container_name: rs2-trino
+    ports:
+      - "8888:8080"
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+    volumes:
+      - ../volumes/trino/catalogs/hive.properties:/etc/trino/catalog/hive.properties:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/v1/info | grep -q '\"starting\":false'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+  # ── Spark Master ──────────────────────────────────────────
+  spark-master:
+    image: apache/spark:3.5.1-python3
+    container_name: rs2-spark-master
+    ports:
+      - "7077:7077"
+      - "8090:8080"
+    environment:
+      SPARK_MODE: master
+      SPARK_NO_DAEMONIZE: "true"
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+
+  # ── Spark Worker ──────────────────────────────────────────
+  spark-worker:
+    image: apache/spark:3.5.1-python3
+    container_name: rs2-spark-worker
+    ports:
+      - "8091:8081"
+    environment:
+      SPARK_MODE: worker
+      SPARK_WORKER_MEMORY: 1g
+      SPARK_WORKER_CORES: 2
+      SPARK_NO_DAEMONIZE: "true"
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/ > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+
+  # ── Airflow Postgres (metadata DB) ────────────────────────
+  airflow-db:
+    image: postgres:15-alpine
+    container_name: rs2-airflow-db
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - rs2-airflow-db-data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ── Airflow Webserver ─────────────────────────────────────
+  # §10.2: Exact tag apache/airflow:2.9.3-python3.12
+  airflow-webserver:
+    image: apache/airflow:2.9.3-python3.12
+    container_name: rs2-airflow-webserver
+    ports:
+      - "8085:8080"
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    command: >
+      bash -c "
+        airflow db migrate &&
+        airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com 2>/dev/null || true &&
+        airflow webserver
+      "
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+    volumes:
+      - ../volumes/airflow/dags:/opt/airflow/dags:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health | grep -q healthy || curl -sf http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+  # ── Airflow Scheduler ─────────────────────────────────────
+  airflow-scheduler:
+    image: apache/airflow:2.9.3-python3.12
+    container_name: rs2-airflow-scheduler
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    command: >
+      bash -c "airflow db migrate && airflow scheduler"
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-webserver:
+        condition: service_healthy
+    volumes:
+      - ../volumes/airflow/dags:/opt/airflow/dags:ro
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+volumes:
+  rs2-minio-data:
+  rs2-airflow-db-data:
