@@ -25,18 +25,21 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: |
+          uv sync --dev
+          uv tool install ruff@0.8.0
+          uv tool install bandit@1.8.0
 
       - name: Lint (ruff)
         run: |
-          uv run ruff check src/ tests/
-          uv run ruff format --check src/ tests/
+          ruff check src/ tests/
+          ruff format --check src/ tests/
 
       - name: Type check (mypy)
         run: uv run mypy src/ridestream/ --ignore-missing-imports
 
       - name: Security scan (bandit)
-        run: uv run bandit -r src/ -ll -q
+        run: bandit -r src/ -ll -q
 
   test:
     name: Unit Tests
