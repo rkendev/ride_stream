@@ -46,9 +46,9 @@ class TestSimulatorToKafka:
                 received.append(msg.value)
 
         # 4 events per ride (REQUESTED → ACCEPTED → STARTED → COMPLETED)
-        assert len(received) >= num_rides * 4, (
-            f"Expected >= {num_rides * 4} events, got {len(received)}"
-        )
+        assert (
+            len(received) >= num_rides * 4
+        ), f"Expected >= {num_rides * 4} events, got {len(received)}"
 
         # Assert required flat fields (dbt bronze schema compliance)
         for payload in received:
