@@ -3,9 +3,12 @@
 Real-time ride-sharing event pipeline built with hexagonal architecture, Kafka,
 S3/MinIO, Hive, Trino, dbt, and Spark Structured Streaming.
 
-[![Tests](https://img.shields.io/badge/tests-305%20passing-brightgreen)]()
-[![Coverage](https://img.shields.io/badge/coverage-measured-blue)]()
+[![Tests](https://img.shields.io/badge/tests-339%20passing-brightgreen)]()
+[![Coverage](https://img.shields.io/badge/coverage-92.74%25-brightgreen)]()
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-blue)]()
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)]()
+
+Test breakdown: 284 unit + 21 integration + 5 E2E (AWS) + 29 dbt data quality = **339 total**.
 
 ## Quick Start
 
@@ -16,7 +19,7 @@ cd ride_stream_v2
 # 2. Install Python 3.12 dependencies
 make setup
 
-# 3. Start Docker stack (10 services)
+# 3. Start Docker stack (12 services: 10 running + 2 init)
 make docker-up
 
 # 4. Verify everything is running
@@ -33,7 +36,6 @@ make test-integration       # integration tests (requires Docker)
 ┌─────────────────────────────────────────────────────────────────┐
 │  RideStream v2 — Hexagonal + Medallion Architecture             │
 └─────────────────────────────────────────────────────────────────┘
-
   Simulator ──> Kafka ──> MinIO (bronze) ──> Hive Catalog
                                                   │
                                                   ▼
@@ -66,22 +68,28 @@ ride_stream_v2/
 │   │   ├── staging/         # Bronze sources
 │   │   ├── silver/          # Cleaned + deduplicated
 │   │   └── gold/            # Aggregated + analytics-ready
-│   └── tests/               # Custom dbt data tests
+│   └── tests/               # 29 dbt data quality tests
+│                            # (surge_bounds, distance_consistency,
+│                            #  fare_consistency, no_duplicate_rides)
 │
 ├── docker/
-│   ├── docker-compose.yml   # 10-service stack
+│   ├── docker-compose.yml   # 12-service stack (10 running + 2 init)
 │   ├── hive/Dockerfile      # Custom Hive Metastore (ADR-012)
 │   └── airflow/Dockerfile   # Airflow 2.9.3-python3.12 (§10.2)
 │
 ├── infrastructure/
-│   ├── cloudformation/      # 10 stacks + root
+│   ├── cloudformation/      # 10 nested stacks + 1 root
 │   ├── airflow/dags/        # Pipeline orchestration DAGs
 │   └── spark/               # spark-submit jobs
 │
 ├── tests/
 │   ├── unit/                # 284 unit tests (domain + adapters + application)
 │   ├── integration/         # 21 tests against real Docker containers
-│   └── e2e/                 # AWS-only tests (skip without credentials)
+│   └── e2e/                 # 5 AWS-only tests (skip without credentials)
+│
+├── .github/workflows/
+│   └── ci.yml               # 4 parallel jobs: quality, test,
+│                            # validate-cfn, dbt-parse
 │
 └── scripts/                 # smoke-test.sh, setup.sh, verify-*.sh
 ```
@@ -104,18 +112,34 @@ ridestream config --env local
 
 ## Running Tests
 
-| Command | What it does |
-|---------|--------------|
-| `make test` | Lint + type-check + security + unit tests |
-| `make test-unit` | Just unit tests with coverage |
-| `make test-integration` | Integration tests against Docker stack |
-| `make smoke-test` | Health checks (Kafka, MinIO, Trino, Hive, Spark, Airflow) |
-| `cd dbt && dbt test` | dbt data quality tests |
+| Command | What it does | Count |
+|---------|--------------|-------|
+| `make test` | Lint + type-check + security + unit tests | 284 unit |
+| `make test-unit` | Just unit tests with coverage (92.74%) | 284 |
+| `make test-integration` | Integration tests against Docker stack | 21 |
+| `make test-e2e` | E2E tests against AWS (requires credentials) | 5 |
+| `make smoke-test` | Health checks (Kafka, MinIO, Trino, Hive, Spark, Airflow) | — |
+| `cd dbt && dbt test` | dbt data quality tests | 29 |
+
+Coverage breakdown: domain ~100%, application ~97%, adapters ~87%.
+
+## CI/CD
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and PR with 4 parallel jobs:
+
+| Job | What it runs |
+|-----|--------------|
+| `quality` | ruff lint, ruff format check, mypy strict, bandit security scan |
+| `test` | pytest unit tests with coverage |
+| `validate-cfn` | `aws cloudformation validate-template` on all stacks (graceful skip without AWS creds) |
+| `dbt-parse` | `dbt parse` to validate model SQL and refs (graceful skip without DB) |
+
+The original spec chose AWS CodePipeline for VPC access to MSK (ADR-010). The project pivoted to GitHub Actions because the CI gates (lint, type check, unit tests, CF validation, dbt parsing) don't require VPC access, and GitHub Actions is free for public repositories. `buildspec.yml` remains in the repo for future private-deployment scenarios.
 
 ## Deployment
 
-1. **Local Docker**: `make docker-up` — 10 services run locally
-2. **Staging**: `bash scripts/setup-pipeline.sh staging` — CloudFormation stack
+1. **Local Docker**: `make docker-up` — 12 services run locally (10 running + 2 init)
+2. **Staging**: `bash scripts/setup-pipeline.sh staging` — CloudFormation stacks
 3. **Production**: `bash scripts/setup-pipeline.sh prod` — manual approval gate
 4. **Smoke test after every deploy**: `make smoke-test` (Rule #9)
 
@@ -137,7 +161,7 @@ See [AWS_SETUP.md](AWS_SETUP.md) for the full deployment procedure.
 | Hexagonal architecture | Domain isolated from infra, dual-target adapters | — |
 | dbt-trino local, dbt-athena prod | Thrift Server was unreliable in v1 | ADR-004 |
 | CloudFormation over Terraform | Native AWS, no state file mgmt | ADR-006 |
-| CodePipeline over GitHub Actions | VPC access to MSK/S3 | ADR-010 |
+| GitHub Actions over CodePipeline | CI gates don't need VPC access; free for public repos | ADR-010 (revised) |
 | Custom Hive Metastore Dockerfile | hadoop-aws JARs not bundled | ADR-012 |
 | Smoke tests as CI/CD gate | v1 passed mocks, failed in prod | ADR-011 |
 
@@ -147,7 +171,7 @@ See [AWS_SETUP.md](AWS_SETUP.md) for the full deployment procedure.
 - Integration tests must exercise real Docker containers (no mocks)
 - All SQL lives in dbt — zero f-string SQL in Python
 - Follow port/adapter pattern: domain depends on ports, never adapters
-- See `.claude/rules/` for layer-specific coding rules
+- See `.claude/rules/` for layer-specific coding rules (7 files covering domain, adapters, application, testing, infrastructure, dbt, tooling)
 
 ## License
 
