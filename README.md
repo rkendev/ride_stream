@@ -150,7 +150,6 @@ See [AWS_SETUP.md](AWS_SETUP.md) for the full deployment procedure.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Domain model, ports/adapters, data flow
 - [AWS_SETUP.md](AWS_SETUP.md) — CloudFormation stacks, cost estimates
 - [DOCKER_SERVICES.md](DOCKER_SERVICES.md) — Service-by-service reference
-- [INTERVIEW_PREP.md](INTERVIEW_PREP.md) — Design decisions, trade-offs
 - [METRICS.md](METRICS.md) — Codebase metrics and test counts
 - [TECHNICAL_PLAN.md](TECHNICAL_PLAN.md) — Original spec with gotchas
 
